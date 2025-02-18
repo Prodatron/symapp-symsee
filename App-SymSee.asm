@@ -836,10 +836,10 @@ gfxdatyps   equ 9       ;Ypos (1W)
 gfxdattyp   equ 11      ;Typ (8=normal, 10=extended)
 gfxdatlen   equ 16      ;Datensatzlänge
 
-gfxgrpmax   equ 16
+gfxgrpmax   equ 32
 gfxgrpmem   ds gfxdatlen*gfxgrpmax
 
-;### GFXOCP -> Advanced OCP Art Studio Grafik ("SCR", "PAL) laden, ggf. vorher alte entfernen
+;### GFXOCP -> Advanced OCP Art Studio Grafik ("SCR", "PAL") laden, ggf. vorher alte entfernen
 ;### Eingabe    (gfxpth)=Pfad
 ;### Ausgabe    CF=0 ok, CF=1 Fehler (A=Grund -> 1=File, 2=Speicher)
 gfxocplin ds 80     ;Zeilenbuffer beim Entpacken
@@ -1077,10 +1077,10 @@ gfxocpa ld l,(ix+gfxdatbnk)
         ld a,5
         ld (prgwingrp),a
         ld hl,320           ;Pfad und Größe eintragen
-        ld (gfxlodm),hl
+        ld (gfxtotx),hl
         ld hl,200
-        ld (gfxlodn),hl
-        call gfxlodj
+        ld (gfxtoty),hl
+        call gfxinf
         xor a
         ret
 gfxocp8 ld a,(prgbnknum)        ;** 512Byte laden
@@ -1426,9 +1426,9 @@ gfxexta ex de,hl
         ld (gfxexthds),hl
         pop bc
 
-        ld hl,(gfxlodx)
+        ld hl,(gfxcurx)
         ld (gfxextxps),hl
-        ld hl,(gfxlody)
+        ld hl,(gfxcury)
         ld (gfxextyps),hl           ;Pos für nächste Grafik vormerken
         push bc
         ld hl,16384-256
@@ -1520,7 +1520,7 @@ gfxext3 ld (gfxexthed+2),a          ;aktuelle Ylen merken
         ld d,63
         jr c,gfxext4
         ld d,126                    ;D=max XBytes
-        ld (gfxlodt),a
+        ld (gfxcolt),a
 gfxext4 ld a,e                  ;*** X-Block-Loop
         cp d
         jr c,gfxext5
@@ -1575,11 +1575,11 @@ gfxext6 ld (gfxexthed+1),a          ;xlen in pixel
         ld e,a
         jr nc,gfxext4
 gfxext7 ld hl,(gfxextxps)
-        ld (gfxlodx),hl
-        ld hl,(gfxlody)
+        ld (gfxcurx),hl
+        ld hl,(gfxcury)
         ld bc,(gfxextymx)
         add hl,bc
-        ld (gfxlody),hl
+        ld (gfxcury),hl
         pop bc
         db #fd:ld b,h
         inc b:dec b
@@ -1587,32 +1587,95 @@ gfxext7 ld hl,(gfxextxps)
 gfxext8 ld hl,(gfxextxps)
         ld de,(gfxlodb+gfxextxln)
         add hl,de
-        ld (gfxlodx),hl
+        ld (gfxcurx),hl
         ld hl,(gfxextyps)
-        ld (gfxlody),hl
+        ld (gfxcury),hl
         jp gfxlod3
+
+;### ICNLOD -> load ICN bitmap
+;### Input      (gfxpth)=Pfad
+;### Output     CF=0 ok, CF=1 error (A=reason -> 1=file, 2=memory)
+icnlod  call gfxfre
+        ld hl,gfxpth
+        ld a,(prgbnknum)
+        db #dd:ld h,a
+        call syscll
+        db MSC_SYS_SYSFIL
+        db FNC_FIL_FILOPN
+        jr c,icnlod1
+        ld hl,icnmem
+        ld bc,298
+        ld de,(prgbnknum)
+        push af
+        call syscll
+        db MSC_SYS_SYSFIL
+        db FNC_FIL_FILINP
+        pop bc
+        push af
+        ld a,b
+        call syscll
+        db MSC_SYS_SYSFIL
+        db FNC_FIL_FILCLO
+        pop af
+icnlod1 ld a,1
+        ret c
+        ld hl,24
+        ld (gfxtotx),hl
+        ld (gfxtoty),hl
+        ld a,(icnmem)
+        sub 6
+        ld (gfxcolt),a
+        ld l,8
+        jr z,icnlod2
+        sub 6
+        ld a,1
+        scf
+        ret nz
+        ld hl,icnmem+9
+        ld (icnmem+5),hl
+        ld hl,icnmem+10
+        ld (icnmem+3),hl
+        ld l,10
+icnlod2 ld a,(prgbnknum)
+        ld h,a
+        ld (prgwinobj+16+02),hl
+        ld hl,icnmem
+        ld (prgwinobj+16+04),hl
+        ld hl,0
+        ld (prgwinobj+16+06),hl
+        ld (prgwinobj+16+08),hl
+        ld a,24
+        ld (prgwinobj+16+10),hl
+        ld (prgwinobj+16+12),hl
+        ld a,2
+        ld (prgwingrp),a
+        call gfxinf
+        xor a
+        ret
 
 ;### GFXLOD -> Neue SymbOS-SGX-Grafik laden, ggf. vorher alte entfernen
 ;### Eingabe    (gfxpth)=Pfad
 ;### Ausgabe    CF=0 ok, CF=1 Fehler (A=Grund -> 1=File, 2=Speicher)
 gfxlodp db 0    ;0=uncompressed
-gfxlodx dw 0    ;aktuelle Xp
-gfxlody dw 0    ;aktuelle Yp
-gfxlodm dw 0    ;maximale Y-Ausdehnung (für Zeilenforschub)
-gfxlodn dw 0    ;maximale Y-Ausdehnung (für Zeilenforschub)
+
+gfxcurx dw 0    ;aktuelle Xp
+gfxcury dw 0    ;aktuelle Yp
+gfxtotx dw 0    ;maximale X-Ausdehnung (für Zeilenforschub)
+gfxtoty dw 0    ;maximale Y-Ausdehnung (für Zeilenforschub)
+gfxcolt db 0    ;0=max 4 Farben, >0=max 16 Farben
+
 gfxlodb ds 8    ;Buffer für Grafik-Header/Steuercode
-gfxlodt db 0    ;0=max 4 Farben, >0=max 16 Farben
 gfxlodu db " colours)",0
 
 gfxlod  call gfxfre
         xor a
-        ld (gfxlodt),a
+        ld (gfxcolt),a
         ld l,a
         ld h,a
-        ld (gfxlodx),hl
-        ld (gfxlody),hl
-        ld (gfxlodm),hl
-        ld (gfxlodn),hl
+        ld (gfxcurx),hl
+        ld (gfxcury),hl
+        ld (gfxtotx),hl
+        ld (gfxtoty),hl
         ld hl,gfxpth
         ld a,(prgbnknum)
         db #dd:ld h,a
@@ -1723,7 +1786,7 @@ gfxlod3 inc b
         jp nz,gfxlod1
 gfxlod4 ld a,0
 gfxlod5 ld d,a                  ;D=Error-Code
-        ld a,16
+        ld a,gfxgrpmax
         sub b 
         ld e,a                  ;E=Anzahl Grafiken
         jr nz,gfxlod6
@@ -1742,8 +1805,8 @@ gfxlod6 push de
         pop af
         scf
         ret
-gfxlod7 push de                 ;**** erfolgreich geladenen Grafik initialisieren
-        call gfxlodj
+gfxlod7 push de                 ;**** erfolgreich geladene Grafik initialisieren
+        call gfxinf
         call gfxlodi
         pop bc                  ;Grafikdaten für Anzeige eintragen
         ld b,c
@@ -1769,60 +1832,7 @@ gfxlod9 ld c,(ix+gfxdattyp)  :ld (iy+02),c
         ld (prgwingrp),a        ;Grafikelemente anzeigen
         xor a
         ret
-gfxlodj ld hl,gfxpth            ;### Grafikpfad und Größen-Anzeigen erzeugen
-        ld de,prgwinsta2
-        ld bc,-1
-gfxlode ld a,(hl)
-        or a
-        jr z,gfxlodf
-        ldi
-        djnz gfxlode
-gfxlodf push de
-        pop iy
-        ld (iy+0)," "
-        ld (iy+1),"("
-        inc iy:inc iy
-        push iy
-        ld de,0
-        ld ix,(gfxlodm)
-        ld (prgwindat+16),ix    ;Grafik-Größe
-        call clcn32
-        ld (iy+1)," "
-        ld (iy+2),"x"
-        ld (iy+3)," "
-        inc iy:inc iy:inc iy:inc iy
-        ld de,0
-        ld ix,(gfxlodn)
-        ld (prgwindat+18),ix
-        call clcn32
-        ld (iy+1),","
-        ld (iy+2)," "
-        ld (iy+3),"4"
-        ld a,(gfxlodt)
-        or a
-        jr z,gfxlodl
-        ld (iy+3),"1"
-        ld (iy+4),"6"
-        inc iy
-gfxlodl db #fd:ld e,l
-        db #fd:ld d,h
-        inc de:inc de:inc de:inc de
-        ld hl,gfxlodu
-        ld bc,10
-        ldir
-        pop hl
-        ld de,prgobjtxt1b
-gfxlodg ld a,(hl)
-        cp ")"
-        jr z,gfxlodh
-        ldi
-        jr gfxlodg
-gfxlodh ld hl,prgobjtxt1c
-        ld bc,7
-        ldir
-        ld hl,prgwinsta1
-        ld (prgwindat+32),hl    ;Status = Grafikpfad
-        ret
+
 gfxlodi ld hl,gfxgrpmem         ;### die ersten 8 reservierten Speicherbereiche in Programmkopf eintragen
         push hl:pop ix
         ld de,prgmemtab
@@ -1847,35 +1857,35 @@ gfxlodk ld bc,gfxdatlen
         ret
 
 gfxlodr ld hl,0                 ;**** Zeilenvorschub
-        ld (gfxlodx),hl
-        ld hl,(gfxlodn)
-        ld (gfxlody),hl
+        ld (gfxcurx),hl
+        ld hl,(gfxtoty)
+        ld (gfxcury),hl
         jp gfxlod3
 
 ;ix+gfxdatxln=Xlen, ix+gfxdatyln=Ylen
-gfxlodc ld hl,(gfxlodx)
+gfxlodc ld hl,(gfxcurx)
         ld (ix+gfxdatxps+0),l
         ld (ix+gfxdatxps+1),h   ;X-Position eintragen
         ld e,(ix+gfxdatxln)
         ld d,0
         add hl,de
-        ld (gfxlodx),hl         ;nächste Xpos eintragen
+        ld (gfxcurx),hl         ;nächste Xpos eintragen
         ex de,hl
-        ld hl,(gfxlodm)
+        ld hl,(gfxtotx)
         sbc hl,de
         jr nc,gfxlodd
-        ld (gfxlodm),de         ;rechte X-Grenze eintragen
-gfxlodd ld hl,(gfxlody)
+        ld (gfxtotx),de         ;rechte X-Grenze eintragen
+gfxlodd ld hl,(gfxcury)
         ld (ix+gfxdatyps+0),l
         ld (ix+gfxdatyps+1),h   ;Y-Position eintragen
         ld e,(ix+gfxdatyln)
         ld d,0
         add hl,de
         ex de,hl
-        ld hl,(gfxlodn)
+        ld hl,(gfxtoty)
         sbc hl,de
         ret nc
-        ld (gfxlodn),de         ;untere Y-Grenze eintragen
+        ld (gfxtoty),de         ;untere Y-Grenze eintragen
         ret
 
 ;### GFXPRT -> lädt grafikteil und depackt optional daten
@@ -1890,6 +1900,63 @@ gfxprt  ld d,a
         call syscll
         db MSC_SYS_SYSFIL
         db FNC_FIL_FILCPR
+        ret
+
+;### GFXINF -> generates graphic info line (path, size, colours)
+;### Input      gfxpth=path, (gfxtotx)=xsize, (gfxtotx)=ysize, (gfxcolt)=colours (0=4, >0=16)
+gfxinf  ld hl,gfxpth            ;### Grafikpfad und Größen-Anzeigen erzeugen
+        ld de,prgwinsta2
+        ld bc,-1
+gfxinf1 ld a,(hl)
+        or a
+        jr z,gfxinf2
+        ldi
+        djnz gfxinf1
+gfxinf2 push de
+        pop iy
+        ld (iy+0)," "
+        ld (iy+1),"("
+        inc iy:inc iy
+        push iy
+        ld de,0
+        ld ix,(gfxtotx)
+        ld (prgwindat+16),ix    ;Grafik-Größe
+        call clcn32
+        ld (iy+1)," "
+        ld (iy+2),"x"
+        ld (iy+3)," "
+        inc iy:inc iy:inc iy:inc iy
+        ld de,0
+        ld ix,(gfxtoty)
+        ld (prgwindat+18),ix
+        call clcn32
+        ld (iy+1),","
+        ld (iy+2)," "
+        ld (iy+3),"4"
+        ld a,(gfxcolt)
+        or a
+        jr z,gfxinf3
+        ld (iy+3),"1"
+        ld (iy+4),"6"
+        inc iy
+gfxinf3 db #fd:ld e,l
+        db #fd:ld d,h
+        inc de:inc de:inc de:inc de
+        ld hl,gfxlodu
+        ld bc,10
+        ldir
+        pop hl
+        ld de,prgobjtxt1b
+gfxinf4 ld a,(hl)
+        cp ")"
+        jr z,gfxinf5
+        ldi
+        jr gfxinf4
+gfxinf5 ld hl,prgobjtxt1c
+        ld bc,7
+        ldir
+        ld hl,prgwinsta1
+        ld (prgwindat+32),hl    ;Status = Grafikpfad
         ret
 
 
@@ -1938,6 +2005,14 @@ gfxsel  call gfxsel2
 gfxsel2 ld hl,gfxpth            ;** Filetyp suchen
         call clcext
         jr z,gfxsel3
+        push de
+        ld a,(de):call clclcs:cp "i":jr nz,gfxsel5:inc de
+        ld a,(de):call clclcs:cp "c":jr nz,gfxsel5:inc de
+        ld a,(de):call clclcs:cp "n":jr nz,gfxsel5
+        pop de
+        call icnlod             ;** SymbOS-ICN-Icon laden
+        jr gfxsel4
+gfxsel5 pop de
         ld a,(de):call clclcs:cp "s":jr nz,gfxsel3:inc de
         ld a,(de):call clclcs:cp "g":jr nz,gfxsel3:inc de
         ld a,(de):call clclcs:cp "x":jr nz,gfxsel3
@@ -2704,17 +2779,17 @@ db #F0,#F0,#F0,#C3
 
 ;### Verschiedenes
 prgmsginf1  db "SymSee",0
-prgmsginf2  db " Version 1.9 (Build "
-read "..\..\..\SVN-Main\trunk\build.asm"
+prgmsginf2  db " Version 1.10 (Build "
+read "..\..\..\SRC-Main\build.asm"
             db "pdt)",0
-prgmsginf3  db " Copyright <c> 2024 SymbiosiS",0
+prgmsginf3  db " Copyright <c> 2025 SymbiosiS",0
 
 prgmsgerr1  db "Can't display selected graphic",0
 prgmsgerr2a db "Error while loading",0
 prgmsgerr2b db "Not enough memory",0
 prgmsgerr0  db 0
 
-prgwintit   db "SymSee 1.9",0
+prgwintit   db "SymSee 1.10",0
 prgwinsta0  db "No image loaded",0
 prgwinsta1  db "Image: "
 prgwinsta2  ds 256+32
@@ -2737,6 +2812,9 @@ prgobjtxt4a db "Display duration",0
 prgobjtxt4c db "sec.",0
 prgobjtxt6  db "Run in fullscreen",0
 prgobjtxt7  db "Random order",0
+
+;### Icon memory
+icnmem  ds 298
 
 
 ;==============================================================================
@@ -2776,22 +2854,9 @@ dw optopn,255*256+16,tolopttxt , 76,  1, 40,12,0    ;05=Button "Options"
 prgwingrp db 1,0:dw prgwinobj,0,0,256*00+00,0,0,00
 prgwinobj
 dw 0,255*256+0,0, 0,0,10000,10000,0     ;00 Hintergrund
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;01 Grafik Teil 01
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;02 Grafik Teil 02
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;03 Grafik Teil 03
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;04 Grafik Teil 04
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;05 Grafik Teil 05
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;06 Grafik Teil 06
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;07 Grafik Teil 07
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;08 Grafik Teil 08
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;09 Grafik Teil 09
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;10 Grafik Teil 10
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;11 Grafik Teil 11
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;12 Grafik Teil 12
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;13 Grafik Teil 13
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;14 Grafik Teil 14
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;15 Grafik Teil 15
-dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;16 Grafik Teil 16
+repeat gfxgrpmax
+dw gfxnxt,255*256+8,0, 0,0,0000,0000,0  ;xx Grafik Teil xx
+rend
 
 ;### OPTIONS ##################################################################
 
