@@ -1,0 +1,26 @@
+labels,ENG,DEU,NLD,SPA,TUR,POR,ITA
+### pack0,24,382
+tolfultxt,Full,Voll,Vol,Todo,Dolu,Cheio,Pieno
+tolopttxt,Options...,Optionen...,Opties...,Opciones...,Seçenekler…,Opções...,Opzioni…
+prgmsginf1,SymSee,SymSee,SymSee,SymSee,SymSee,SymSee,SymSee
+prgmsgerr1,Can't display selected graphic,Bild nicht anzeigbar,Kan afbeelding niet tonen,No se puede mostrar la imagen,Görüntü görüntülenemiyor.,A imagem não pode ser exibida. ,Non posso visualizzare l'immagine
+prgmsgerr2a,Error while loading,Fehler beim Laden,Fout bij laden,Error al cargar,Yükleme hatası,Erro ao carregar,Errore di caricamento
+prgmsgerr2b,Not enough memory,Speicher voll,Onvoldoende geheugen,No hay memoria suficiente,Yeterli bellek yok,Memória insuficiente,Memoria insufficiente
+prgwintit,SymSee 1.10,SymSee 1.10,SymSee 1.10,SymSee 1.10,SymSee 1.10,SymSee 1.10,SymSee 1.10
+prgwinsta0,No image loaded,Nichts geladen,Geen afbeelding geladen,Sin imagen,İmaj yok,Nenhuma imagem,Nessuna immagine
+prgwinsta1,Image: ,Bild: ,Afbeelding: ,Imagen: ,İmaj: ,Imagem: ,Immagine:
+prgwinsta3, colours), Farben), kleuren), colores), renk), cores), colori)
+prgtitopt,Options,Optionen,Opties,Opciones,Seçenekler,Opções,Opzioni…
+prgbutabo,About,Info,Over,Info,Hakkında,Sobre,Info
+prgbuthlp,Help,Hilfe,Help,Ayuda,Yardım,Ajuda,Aiuto
+prgbutoky,Close,Schließen,Sluiten,Cerrar,Kapat,Fechar,Chiudi
+prgbutsld,Start Slideshow,Diaschau starten,Diashow starten,Iniciar Presentación,Slayt gösterisini başlat,Iniciar Apresentação,Inizia Presentazione
+prgbutbck,Use as background,Als Hintergrund,Als achtergrond,Usar como fondo,Arkaplan olarak,Como plano de fundo,Usa come sfondo
+prgobjtxt1,Image,Bild,Afbeelding,Imagen,İmaj,Imagem,Immagine
+prgobjtxt1a,Resolution: ,Auflösung: ,Resolutie: ,Resolución: ,Çözünürlük: ,Resolução: ,Risoluzione: 
+prgobjtxt2,Slideshow,Diashow,Diashow,Presentación,Slayt gösterisi,Apresentação,Presentazione
+prgobjtxt3a,Image path,Bilderpfad,Pad,Ruta,İmaj yolu,Caminho,Percorso
+prgobjtxt4a,Display duration,Anzeigedauer,Weergaveduur,Durante,Süresi,Duração,Durata
+prgobjtxt4c,sec.,Sek.,sec.,seg.,San.,seg.,sec.
+prgobjtxt6,Run in fullscreen,Vollbildmodus,Volledig scherm,Pantalla completa,Tam ekran çalıştır,Tela cheia,Esegui a pieno schermo
+prgobjtxt7,Random order,zufällige Reihenfolge,Willekeurige volgorde,Orden aleatorio,Rastgele sırala,Ordem aleatória,Ordine casuale
