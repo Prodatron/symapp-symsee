@@ -43,28 +43,30 @@ prgpstdat       equ 6           ;Adresse Daten-Teil
 prgpsttra       equ 8           ;Adresse Transfer-Teil
 prgpstspz       equ 10          ;zusätzliche Prozessnummern (4*1)
 prgpstbnk       equ 14          ;Bank (1-8)
+prgpstflg       equ 46          ;additional flags
+prgpstwin       equ 47          ;window mode
 prgpstmem       equ 48          ;zusätzliche Memory-Bereiche (8*5)
 prgpstnum       equ 88          ;Programm-Nummer
 prgpstprz       equ 89          ;Prozess-Nummer
 
-prgcodbeg   dw prgdatbeg-prgcodbeg  ;Länge Code-Teil
-            dw prgtrnbeg-prgdatbeg  ;Länge Daten-Teil
-            dw prgtrnend-prgtrnbeg  ;Länge Transfer-Teil
+App_BegCode dw App_BegData-App_BegCode  ;Länge Code-Teil
+            dw App_BegTrns-App_BegData  ;Länge Daten-Teil
+            dw App_EndTrns-App_BegTrns  ;Länge Transfer-Teil
 prgdatadr   dw #1000                ;Original-Origin                    POST Adresse Daten-Teil
 prgtrnadr   dw relocate_count       ;Anzahl Einträge Relocator-Tabelle  POST Adresse Transfer-Teil
-prgprztab   dw prgstk-prgtrnbeg     ;Länge Stack                        POST Tabelle Prozesse
+prgprztab   dw prgstk-App_BegTrns   ;Länge Stack                        POST Tabelle Prozesse
             dw 0                    ;*reserved*
-prgbnknum   db 0                    ;*reserved*                         POST bank number
+App_BnkNum  db 0                    ;*reserved*                         POST bank number
             db "SymSee":ds 18:db 0 ;Name
             db 1                    ;flags (+1=16c icon)
-            dw prgicn16c-prgcodbeg  ;16 colour icon offset
+            dw prgicn16c-App_BegCode  ;16 colour icon offset
             ds 5                    ;*reserved*
 prgmemtab   db "SymExe10"           ;SymbOS-EXE-Kennung                 POST Tabelle Speicherbereiche
             dw dirsiz               ;zusätzlicher Code-Speicher
             dw 0                    ;zusätzlicher Data-Speicher
             dw 0                    ;zusätzlicher Transfer-Speicher
             ds 26                   ;*reserviert*
-            db 0,4                  ;required OS version (4.0)
+            db 1,4                  ;required OS version (4.0)
 prgicnsml   db 2,8,8,#0F,#0F,#7B,#ED,#B0,#D0,#20,#C0,#30,#C0,#90,#90,#79,#E9,#0F,#0F
 prgicnbig   db 6,24,24,#0F,#0F,#5F,#FF,#FF,#FF,#7F,#FC,#FF,#FF,#FF,#FF,#AF,#FF,#F0,#F7,#FF,#FF,#FF,#FF,#FF,#F8,#F7,#FF,#F2,#F5,#FF,#FF,#F1,#FF,#F0,#F0,#F7,#FF,#FE,#F7,#F0,#F0,#F0,#FF,#FF,#F2,#F0,#F4,#F0,#F1,#FF,#7C,#08,#30,#FF,#F0
             db #F3,#BE,#00,#75,#CD,#F0,#F0,#8F,#00,#75,#8C,#78,#F6,#E3,#08,#75,#CE,#F0,#F7,#F1,#80,#75,#FC,#F0,#9F,#F4,#C4,#35,#FE,#F0,#18,#90,#E2,#30,#0F,#E6,#10,#88,#F1,#12,#88,#00,#32,#08,#F4,#95,#C4,#00,#75,#00,#FE,#E1,#E9,#1B
@@ -78,25 +80,41 @@ windatprz   equ 3   ;Prozeßnummer
 windatsup   equ 51  ;Nummer des Superfensters+1 oder 0
 prgwin      db 0    ;Nummer des Haupt-Fensters
 
-prgprz  call SySystem_HLPINI
-        ld a,(prgprzn)
+prgprz  ld a,(App_BegCode+prgpstflg)
+        bit 0,a
+        jr z,prgprz4
+        ld hl,(App_BegCode)
+        ld de,App_BegCode
+        add hl,de
+        ld bc,128
+        sbc hl,bc
+        ld de,gfxpth
+        ldir
+prgprz4 ld a,(App_BegCode+prgpstwin)
+        or a
+        jr z,prgprz5
+        ld (prgwindat+0),a
+prgprz5 call prglng
+        call SySystem_HLPINI
+
+        ld a,(App_PrcID)
         ld (prgwindat+windatprz),a
         ld (prgwinopt+windatprz),a
 
         ld bc,256*DSK_SRV_SCRCNV+MSC_DSK_DSKSRV
         ld de,gfxcnvtab
-        ld hl,(prgbnknum)
+        ld hl,(App_BnkNum)
         call msgsnd
         rst #30
 
-        ld hl,jmp_sysinf        ;Computer-Typ holen
+        ld hl,jmp_sysinf        ;get capability flag
         ld de,256*1+5
-        ld ix,cfgcpctyp
-        ld iy,66+2+6+8
+        ld ix,cfgcapflg
+        ld iy,244-163
         rst #28
 
         ld c,MSC_DSK_WINOPN
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         ld b,a
         ld de,prgwindat
         call msgsnd             ;Fenster aufbauen
@@ -105,7 +123,7 @@ prgprz1 call msgdsk             ;Message holen -> IXL=Status, IXH=Absender-Proze
         jp z,prgend             ;kein Speicher für Fenster -> Prozeß beenden
         cp MSR_DSK_WOPNOK
         jr nz,prgprz1           ;andere Message als "Fenster geöffnet" -> ignorieren
-        ld a,(prgmsgb+4)
+        ld a,(App_MsgBuf+4)
         ld (prgwin),a           ;Fenster wurde geöffnet -> Nummer merken
 
         jp optgfx               ;angehängt Grafik suchen
@@ -178,13 +196,13 @@ prgkey2 inc hl
 
 ;### PRGEND -> Programm beenden
 prgend  call gfxfre
-        ld a,(prgprzn)
+        ld a,(App_PrcID)
         db #dd:ld l,a
         ld a,(sysprzn)
         db #dd:ld h,a
-        ld iy,prgmsgb
+        ld iy,App_MsgBuf
         ld (iy+0),MSC_SYS_PRGEND
-        ld a,(prgcodbeg+prgpstnum)
+        ld a,(App_BegCode+prgpstnum)
         ld (iy+1),a
         rst #10
 prgend0 rst #30
@@ -195,18 +213,69 @@ prginf  ld hl,prgmsginf         ;*** Info-Fenster
         ld b,1+128
 prginf0 call prginf1
         jp prgprz0
-prginf1 ld (prgmsgb+1),hl
-        ld a,(prgbnknum)
+prginf1 ld (App_MsgBuf+1),hl
+        ld a,(App_BnkNum)
         ld c,a
-        ld (prgmsgb+3),bc
+        ld (App_MsgBuf+3),bc
         ld a,MSC_SYS_SYSWRN
-        ld (prgmsgb),a
-prginf2 ld a,(prgprzn)
+        ld (App_MsgBuf),a
+prginf2 ld a,(App_PrcID)
         db #dd:ld l,a
         ld a,(sysprzn)
         db #dd:ld h,a
-        ld iy,prgmsgb
+        ld iy,App_MsgBuf
         rst #10
+        ret
+
+;### PRGLNG -> load language pack
+prglng  ld hl,(App_BegCode)
+        ld de,App_BegCode
+        dec h
+        add hl,de               ;HL=code area end=path
+        ex de,hl
+        ld a,(App_BnkNum)
+        ld c,a
+        ld hl,texts_int
+        ld ix,256*0+9           ;default language=9 (english), pack=0
+        ld iyl,0                ;language-file version 0
+        jp SySystem_LNGLOD
+
+SySystem_LNGLOD
+        ld (App_MsgBuf+6),a
+        ld (App_MsgBuf+7),bc
+        ld (App_MsgBuf+8),hl
+        ld (App_MsgBuf+10),ix
+        ld (App_MsgBuf+12),iy
+        ld a,(App_BnkNum)
+        ld iyh,a
+        ld c,MSC_SYS_EXTFNC
+        ld l,FNC_DXT_LNGLOD
+        call SySystem_SendMessage
+SySLLo1 call SySystem_WaitMessage
+        cp MSR_SYS_EXTFNC
+        jr nz,SySLLo1
+        ld a,(App_MsgBuf+1)
+        ret
+SySystem_SendMessage
+        ld iy,App_MsgBuf
+        ld (iy+0),c
+        ld (App_MsgBuf+1),hl
+        ld (iy+3),a
+        ld (App_MsgBuf+4),de
+        db #dd:ld h,3       ;3 is the number of the system manager process
+        ld a,(App_PrcID)
+        db #dd:ld l,a
+        rst #10
+        ret
+SySystem_WaitMessage
+        ld iy,App_MsgBuf
+SySWMs1 db #dd:ld h,3       ;3 is the number of the system manager process
+        ld a,(App_PrcID)
+        db #dd:ld l,a
+        rst #08             ;wait for a system manager message
+        db #dd:dec l
+        jr nz,SySWMs1
+        ld a,(iy+0)
         ret
 
 
@@ -220,8 +289,8 @@ SySystem_HLPPTH1 ds 128
 SySHInX db ".HLP",0
 
 SySystem_HLPINI
-        ld hl,(prgcodbeg)
-        ld de,prgcodbeg
+        ld hl,(App_BegCode)
+        ld de,App_BegCode
         dec h
         add hl,de                   ;HL = CodeEnd = Command line
         ld de,SySystem_HLPPTH1
@@ -257,7 +326,7 @@ SySHIn3 ld a,c
 hlpopn  ld a,(SySystem_HLPFLG)
         or a
         jp z,prgprz0
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         ld d,a
         ld a,PRC_ID_SYSTEM
         ld c,MSC_SYS_PRGRUN
@@ -273,7 +342,7 @@ diawin  db 0
 ;### DIAINP -> Dialog-Fenster aufbauen
 ;### Eingabe    DE=Fenster
 diainp  ld c,MSC_DSK_WINOPN     ;Fenster aufbauen
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         ld b,a
         call msgsnd
 diainp3 call msgdsk             ;Message holen -> IXL=Status, IXH=Absender-Prozeß
@@ -281,7 +350,7 @@ diainp3 call msgdsk             ;Message holen -> IXL=Status, IXH=Absender-Proze
         ret z                   ;kein Speicher für Fenster -> dann halt nicht
         cp MSR_DSK_WOPNOK
         jr nz,diainp3           ;andere Message als "Fenster geöffnet" -> ignorieren
-        ld a,(prgmsgb+4)
+        ld a,(App_MsgBuf+4)
         ld (diawin),a           ;Fenster wurde geöffnet -> Nummer merken
         inc a
         ld (prgwindat+windatsup),a
@@ -310,21 +379,21 @@ prgbro  ld e,a
         ret nz
         ld a,e
         ld (prgbron),a
-        ld (prgmsgb+8),hl
-        ld hl,(prgbnknum)
+        ld (App_MsgBuf+8),hl
+        ld hl,(App_BnkNum)
         ld h,8
-        ld (prgmsgb+6),hl
+        ld (App_MsgBuf+6),hl
         ld hl,100
-        ld (prgmsgb+10),hl
+        ld (App_MsgBuf+10),hl
         ld hl,5000
-        ld (prgmsgb+12),hl
+        ld (App_MsgBuf+12),hl
         ld l,MSC_SYS_SELOPN
-        ld (prgmsgb),hl
+        ld (App_MsgBuf),hl
         jp prginf2
 
 ;### PRGBRC -> Browse-Fenster schließen
 ;### Eingabe    P1=Typ (0=Ok, 1=Abbruch, 2=FileAuswahl bereits in Benutzung, 3=kein Speicher frei, 4=kein Fenster frei), P2=PfadLänge
-prgbrc  ld hl,(prgmsgb+1)
+prgbrc  ld hl,(App_MsgBuf+1)
         inc l
         jr z,prgbrc2
         dec l
@@ -342,15 +411,15 @@ prgbrc2 ld a,h
 ;### MSGGET -> Message für Programm abholen
 ;### Ausgabe    CF=0 -> keine Message vorhanden, CF=1 -> IXH=Absender, (recmsgb)=Message, A=(recmsgb+0), IY=recmsgb
 ;### Veraendert 
-msgget  ld a,(prgprzn)
+msgget  ld a,(App_PrcID)
         db #dd:ld l,a           ;IXL=Rechner-Prozeß-Nummer
         db #dd:ld h,-1
-        ld iy,prgmsgb           ;IY=Messagebuffer
+        ld iy,App_MsgBuf           ;IY=Messagebuffer
         rst #08                 ;Message holen -> IXL=Status, IXH=Absender-Prozeß
         or a
         db #dd:dec l
         ret nz
-        ld iy,prgmsgb
+        ld iy,App_MsgBuf
         ld a,(iy+0)
         or a
         jp z,prgend
@@ -365,16 +434,16 @@ msgdsk  call msgget
         ld a,(dskprzn)
         db #dd:cp h
         jr nz,msgdsk            ;Message von anderem als Desktop-Prozeß -> ignorieren
-        ld a,(prgmsgb)
+        ld a,(App_MsgBuf)
         ret
 
 ;### MSGSND -> Message an Desktop-Prozess senden
 ;### Eingabe    C=Kommando, B/E/D/L/H=Parameter1/2/3/4/5
 msgsnd  ld a,(dskprzn)
 msgsnd1 db #dd:ld h,a
-        ld a,(prgprzn)
+        ld a,(App_PrcID)
         db #dd:ld l,a
-        ld iy,prgmsgb
+        ld iy,App_MsgBuf
         ld (iy+0),c
         ld (iy+1),b
         ld (iy+2),e
@@ -388,52 +457,52 @@ msgsnd1 db #dd:ld h,a
 ;### Eingabe    (SP)=Modul/Funktion, AF,BC,DE,HL,IX,IY=Register
 ;### Ausgabe    AF,BC,DE,HL,IX,IY=Register
 sysclln db 0
-syscll  ld (prgmsgb+04),bc      ;Register in Message-Buffer kopieren
-        ld (prgmsgb+06),de
-        ld (prgmsgb+08),hl
-        ld (prgmsgb+10),ix
-        ld (prgmsgb+12),iy
+syscll  ld (App_MsgBuf+04),bc      ;Register in Message-Buffer kopieren
+        ld (App_MsgBuf+06),de
+        ld (App_MsgBuf+08),hl
+        ld (App_MsgBuf+10),ix
+        ld (App_MsgBuf+12),iy
         push af
         pop hl
-        ld (prgmsgb+02),hl
+        ld (App_MsgBuf+02),hl
         pop hl
         ld e,(hl)
         inc hl
         ld d,(hl)
         inc hl
         push hl
-        ld (prgmsgb+00),de      ;Modul und Funktion in Message-Buffer kopieren
+        ld (App_MsgBuf+00),de      ;Modul und Funktion in Message-Buffer kopieren
         ld a,e
         ld (sysclln),a
-        ld iy,prgmsgb
-        ld a,(prgprzn)          ;Desktop und System-Prozessnummer holen
+        ld iy,App_MsgBuf
+        ld a,(App_PrcID)          ;Desktop und System-Prozessnummer holen
         db #dd:ld l,a
         ld a,(sysprzn)
         db #dd:ld h,a
         rst #10                 ;Message senden
 syscll1 rst #30
-        ld iy,prgmsgb
-        ld a,(prgprzn)
+        ld iy,App_MsgBuf
+        ld a,(App_PrcID)
         db #dd:ld l,a
         ld a,(sysprzn)
         db #dd:ld h,a
         rst #18                 ;auf Antwort warten
         db #dd:dec l
         jr nz,syscll1
-        ld a,(prgmsgb)
+        ld a,(App_MsgBuf)
         sub 128
         ld e,a
         ld a,(sysclln)
         cp e
         jr nz,syscll1
-        ld hl,(prgmsgb+02)      ;Register aus Message-Buffer holen
+        ld hl,(App_MsgBuf+02)      ;Register aus Message-Buffer holen
         push hl
         pop af
-        ld bc,(prgmsgb+04)
-        ld de,(prgmsgb+06)
-        ld hl,(prgmsgb+08)
-        ld ix,(prgmsgb+10)
-        ld iy,(prgmsgb+12)
+        ld bc,(App_MsgBuf+04)
+        ld de,(App_MsgBuf+06)
+        ld hl,(App_MsgBuf+08)
+        ld ix,(App_MsgBuf+10)
+        ld iy,(App_MsgBuf+12)
         ret
 
 ;### CLCM16 -> Multipliziert zwei Werte (16bit)
@@ -579,6 +648,15 @@ clcexti or a
         jr nz,clcextf
         ld a,e
         or d
+        ret
+
+;### STRCOP -> copies 0-terminated string
+;### Input      HL=source, DE=destination
+;### Output     DE=behind 0-terminator
+strcop  ld a,(hl)
+        ldi
+        or a
+        jr nz,strcop
         ret
 
 ;### STRLEN -> Ermittelt Länge eines Strings
@@ -886,14 +964,14 @@ gfxocp  call gfxfre
         xor a
         ld (gfxocpbuf),a
         ld hl,gfxpth            ;** PAL laden
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         db #dd:ld h,a
         call syscll
         db MSC_SYS_SYSFIL
         db FNC_FIL_FILOPN
         ccf
         jp nc,gfxocpk
-        ld de,(prgbnknum)
+        ld de,(App_BnkNum)
         ld hl,gfxocpbuf
         ld bc,239+128
         push af
@@ -944,7 +1022,7 @@ gfxocpk pop de
         ld a,1
         ret c
 gfxocpj ld hl,gfxpth            ;** File öffnen
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         db #dd:ld h,a
         call syscll
         db MSC_SYS_SYSFIL
@@ -1083,7 +1161,7 @@ gfxocpa ld l,(ix+gfxdatbnk)
         call gfxinf
         xor a
         ret
-gfxocp8 ld a,(prgbnknum)        ;** 512Byte laden
+gfxocp8 ld a,(App_BnkNum)        ;** 512Byte laden
         ld e,a
         ld a,(gfxocphnd)
         ld hl,gfxocpbuf
@@ -1114,7 +1192,7 @@ gfxocp1 push ix                 ;** 8K-Speicher reservieren
         ld bc,40
         add hl,bc
         ld (gfxocppoi+3+9),hl
-        ld hl,prgbnknum
+        ld hl,App_BnkNum
         add a:add a:add a:add a
         or (hl)
         ld hl,gfxocppoi
@@ -1352,7 +1430,7 @@ gfxlin1 add a
         ld a,(ix+gfxdatbnk)
         add a:add a:add a:add a
         ld c,a
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         or c
         ld bc,80
         rst #20:dw jmp_bnkcop   ;Zeile kopieren
@@ -1390,7 +1468,7 @@ gfxexthds   dw 0    ;size of all headers for one 16k block
 
 gfxext  push bc
         push ix
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         ld e,a
         ld a,c
         ld hl,gfxlodb+3
@@ -1544,7 +1622,7 @@ gfxext6 ld (gfxexthed+1),a          ;xlen in pixel
         ld a,(ix+gfxdatbnk)
         ld (ix+gfxdatbnk+gfxdatlen),a
         add a:add a:add a:add a
-        ld hl,prgbnknum
+        ld hl,App_BnkNum
         add (hl)
         ld hl,gfxexthed
         ld bc,9
@@ -1597,7 +1675,7 @@ gfxext8 ld hl,(gfxextxps)
 ;### Output     CF=0 ok, CF=1 error (A=reason -> 1=file, 2=memory)
 icnlod  call gfxfre
         ld hl,gfxpth
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         db #dd:ld h,a
         call syscll
         db MSC_SYS_SYSFIL
@@ -1605,7 +1683,7 @@ icnlod  call gfxfre
         jr c,icnlod1
         ld hl,icnmem
         ld bc,298
-        ld de,(prgbnknum)
+        ld de,(App_BnkNum)
         push af
         call syscll
         db MSC_SYS_SYSFIL
@@ -1636,7 +1714,7 @@ icnlod1 ld a,1
         ld hl,icnmem+10
         ld (icnmem+3),hl
         ld l,10
-icnlod2 ld a,(prgbnknum)
+icnlod2 ld a,(App_BnkNum)
         ld h,a
         ld (prgwinobj+16+02),hl
         ld hl,icnmem
@@ -1665,7 +1743,6 @@ gfxtoty dw 0    ;maximale Y-Ausdehnung (für Zeilenforschub)
 gfxcolt db 0    ;0=max 4 Farben, >0=max 16 Farben
 
 gfxlodb ds 8    ;Buffer für Grafik-Header/Steuercode
-gfxlodu db " colours)",0
 
 gfxlod  call gfxfre
         xor a
@@ -1677,7 +1754,7 @@ gfxlod  call gfxfre
         ld (gfxtotx),hl
         ld (gfxtoty),hl
         ld hl,gfxpth
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         db #dd:ld h,a
         call syscll
         db MSC_SYS_SYSFIL
@@ -1690,7 +1767,7 @@ gfxlod  call gfxfre
         ld ix,gfxgrpmem
 gfxlod1 push bc
         push ix
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         ld e,a
         ld a,c
 
@@ -1904,8 +1981,11 @@ gfxprt  ld d,a
 
 ;### GFXINF -> generates graphic info line (path, size, colours)
 ;### Input      gfxpth=path, (gfxtotx)=xsize, (gfxtotx)=ysize, (gfxcolt)=colours (0=4, >0=16)
-gfxinf  ld hl,gfxpth            ;### Grafikpfad und Größen-Anzeigen erzeugen
+gfxinf  ld hl,(prgwinsta1+1)
         ld de,prgwinsta2
+        call strcop
+        dec de
+        ld hl,gfxpth            ;### Grafikpfad und Größen-Anzeigen erzeugen
         ld bc,-1
 gfxinf1 ld a,(hl)
         or a
@@ -1942,23 +2022,19 @@ gfxinf2 push de
 gfxinf3 db #fd:ld e,l
         db #fd:ld d,h
         inc de:inc de:inc de:inc de
-        ld hl,gfxlodu
-        ld bc,10
-        ldir
-        pop hl
+        ld hl,(prgwinsta3+1)
+        call strcop
+        ld hl,(prgobjtxt1a+1)
         ld de,prgobjtxt1b
-gfxinf4 ld a,(hl)
-        cp ")"
-        jr z,gfxinf5
-        ldi
-        jr gfxinf4
-gfxinf5 ld hl,prgobjtxt1c
-        ld bc,7
-        ldir
-        ld hl,prgwinsta1
+        call strcop
+        dec de
+        pop hl
+        call strcop
+        dec de:dec de
+        ld (de),a
+        ld hl,prgwinsta2
         ld (prgwindat+32),hl    ;Status = Grafikpfad
         ret
-
 
 ;### GFXFRE -> Aktuelle Grafik entfernen bzw. Speicher freigeben
 gfxfre  xor a
@@ -2153,7 +2229,7 @@ gfxsrg1 add hl,de
 optopn  ld a,64                 ;Button zunächst ausblenden
         ld (prgdatopt1+2),a
         ld iy,prgwinobj+16+6
-        ld a,(cfgcpctyp)        ;Test, ob sich Grafik als Hintergrund eignet
+        ld a,(cfgcapflg)        ;Test, ob sich Grafik als Hintergrund eignet
         and #60
         jp z,optopn6
         cp #20
@@ -2276,12 +2352,12 @@ optbgr  ld a,-1
         xor a
         ld (gfxpth-1),a
         ld hl,256*2+MSC_SYS_SYSCFG
-        ld (prgmsgb),hl
-        ld a,(prgprzn)
+        ld (App_MsgBuf),hl
+        ld a,(App_PrcID)
         db #dd:ld l,a
         ld a,(sysprzn)
         db #dd:ld h,a
-        ld iy,prgmsgb
+        ld iy,App_MsgBuf
         rst #10
         jp diainpc
 
@@ -2326,10 +2402,10 @@ optsld6 ld hl,sldinppth         ;Pfad setzen
         call dirnew
         call dirprv
         jp optslda
-optsld1 ld a,(prgprzn)
+optsld1 ld a,(App_PrcID)
         db #dd:ld l,a           ;IXL=Rechner-Prozeß-Nummer
         db #dd:ld h,-1
-        ld iy,prgmsgb           ;IY=Messagebuffer
+        ld iy,App_MsgBuf           ;IY=Messagebuffer
         rst #30
         rst #18
         db #dd:dec l
@@ -2398,8 +2474,8 @@ optsld8 pop af
         jp optsld1
 
 ;### OPTGFX -> Angehängte Grafik suchen
-optgfx  ld hl,(prgcodbeg)       ;nach angehängter Grafik suchen
-        ld de,prgcodbeg
+optgfx  ld hl,(App_BegCode)       ;nach angehängter Grafik suchen
+        ld de,App_BegCode
         dec h
         add hl,de               ;HL=CodeEnde=Pfad
         ld b,255
@@ -2617,7 +2693,7 @@ dirnew8 ld (de),a
         xor a
         ld (de),a
         ld hl,dirpth            ;*** Directory laden
-        ld a,(prgbnknum)
+        ld a,(App_BnkNum)
         db #dd:ld h,a
         ld de,dirbuf
         ld bc,dirsiz
@@ -2708,7 +2784,7 @@ dirbuf  db 0
 ;### DATEN-TEIL ###############################################################
 ;==============================================================================
 
-prgdatbeg
+App_BegData
 
 prgicn16c db 12,24,24:dw $+7:dw $+4,12*24:db 5
 db #00,#00,#00,#00,#0E,#0E,#EE,#EE,#EE,#EE,#EE,#EE,#0E,#EE,#EE,#33,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#E0,#E0,#EE,#EE,#33,#33,#3E,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#E3,#33,#3E,#EE,#EE,#EE
@@ -2717,10 +2793,6 @@ db #08,#88,#88,#33,#66,#66,#11,#11,#11,#EE,#E0,#E3,#88,#88,#8E,#36,#66,#63,#33,#
 db #18,#88,#8E,#36,#66,#11,#11,#33,#66,#66,#3E,#11,#1E,#88,#80,#36,#66,#61,#13,#33,#66,#63,#38,#81,#11,#E8,#88,#33,#66,#66,#16,#66,#66,#63,#E8,#88,#11,#1E,#88,#03,#E6,#66,#66,#66,#66,#63,#08,#88
 db #3E,#31,#10,#8E,#3E,#66,#66,#66,#66,#3E,#88,#88,#EE,#E3,#11,#10,#E1,#16,#66,#6E,#33,#E8,#88,#88,#EE,#EE,#33,#11,#11,#11,#33,#33,#30,#88,#88,#88,#EE,#EE,#EE,#E3,#33,#31,#11,#E0,#88,#88,#88,#88
 db #3E,#EE,#EE,#EE,#33,#33,#31,#11,#11,#11,#E1,#E1,#EE,#EE,#EE,#EE,#EE,#33,#33,#33,#33,#31,#11,#11,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#E3,#33,#33,#33,#33,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#EE,#33
-
-;### Toolbar-Buttons
-tolfultxt   db "Full",0
-tolopttxt   db "Options...",0
 
 ;1W source, 1W destination+9, 1B byte width, 1B pixel width, 1B height, 1B number of sourcebytes <=127)
 gfxcnvtab
@@ -2777,41 +2849,27 @@ db #9E,#F0,#E1,#4B
 db #8F,#0F,#0F,#4B
 db #F0,#F0,#F0,#C3
 
+;==============================================================================
+;%%% MULTI LANGUAGE TEXTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;==============================================================================
+
+texts_int
+read"App-SymSee-i18n.asm"
+texts_int_end
+
+list
+texts_int_len   equ texts_int_end-texts_int
+nolist
+
 ;### Verschiedenes
-prgmsginf1  db "SymSee",0
 prgmsginf2  db " Version 1.10 (Build "
 read "..\..\..\SRC-Main\build.asm"
             db "pdt)",0
 prgmsginf3  db " Copyright <c> 2025 SymbiosiS",0
 
-prgmsgerr1  db "Can't display selected graphic",0
-prgmsgerr2a db "Error while loading",0
-prgmsgerr2b db "Not enough memory",0
+prgobjtxt1b ds 22+30
+prgwinsta2  ds 256+32+15
 prgmsgerr0  db 0
-
-prgwintit   db "SymSee 1.10",0
-prgwinsta0  db "No image loaded",0
-prgwinsta1  db "Image: "
-prgwinsta2  ds 256+32
-
-;### Option-Fenster
-prgtitopt   db "Options",0
-prgbutabo   db "About",0
-prgbuthlp   db "Help",0
-prgbutoky   db "Close",0
-prgbutsld   db "Start Slideshow",0
-prgbutbck   db "Use as background",0
-
-prgobjtxt1  db "Image",0
-prgobjtxt1a db "Resolution: "
-prgobjtxt1b ds 22
-prgobjtxt1c db " pixel",0
-prgobjtxt2  db "Slideshow",0
-prgobjtxt3a db "Image path",0
-prgobjtxt4a db "Display duration",0
-prgobjtxt4c db "sec.",0
-prgobjtxt6  db "Run in fullscreen",0
-prgobjtxt7  db "Random order",0
 
 ;### Icon memory
 icnmem  ds 298
@@ -2821,13 +2879,13 @@ icnmem  ds 298
 ;### TRANSFER-TEIL ############################################################
 ;==============================================================================
 
-prgtrnbeg
+App_BegTrns
 ;### PRGPRZS -> Stack für Programm-Prozess
         ds 128
 prgstk  ds 6*2
         dw prgprz
-prgprzn db 0
-prgmsgb ds 14
+App_PrcID db 0
+App_MsgBuf ds 14
 
 ;### INFO-FENSTER #############################################################
 
@@ -2848,8 +2906,8 @@ dw     00,255*256+0, 2,         0,0,10000,10000,0   ;00=Hintergrund
 dw gfxprv,255*256+10,tolprvspr ,  1,  1, 16,12,0    ;01=Button "Previous"
 dw gfxnxt,255*256+10,tolnxtspr , 17,  1, 16,12,0    ;02=Button "Next"
 dw prgsrc,255*256+10,tolselspr , 33,  1, 16,12,0    ;04=Button "Open"
-dw gfxful,255*256+16,tolfultxt , 49,  1, 25,12,0    ;03=Button "Fullscreen"
-dw optopn,255*256+16,tolopttxt , 76,  1, 40,12,0    ;05=Button "Options"
+dw gfxful,255*256+16,tolfultxt , 49,  1, 35,12,0    ;03=Button "Fullscreen"
+dw optopn,255*256+16,tolopttxt , 86,  1, 64,12,0    ;05=Button "Options"
 
 prgwingrp db 1,0:dw prgwinobj,0,0,256*00+00,0,0,00
 prgwinobj
@@ -2860,31 +2918,31 @@ rend
 
 ;### OPTIONS ##################################################################
 
-prgwinopt   dw #1501,4+16,96,15,128,147,0,0,128,147,128,147,128,147, prgicnsml,prgtitopt,0,0,prggrpopt,0,0:ds 136+14
+prgwinopt   dw #1501,4+16,96,15,152,147,0,0,152,147,152,147,152,147, prgicnsml,prgtitopt,0,0,prggrpopt,0,0:ds 136+14
 prggrpopt   db 17,0:dw prgdatopt,0,0,256*4+17,0,0,0
 prgdatopt
 dw 00,     255*256+0,2, 0,0,10000,10000,0               ;00=Hintergrund
-dw prginf, 255*256+16,prgbutabo,    3,132, 39,12,0      ;01=Button "About"
-dw hlpopn, 255*256+16,prgbuthlp,   45,132, 38,12,0      ;02=Button "Help"
-dw diainpc,255*256+16,prgbutoky,   86,132, 39,12,0      ;03=Button "Close"
-dw 00,     255*256+3, prgobjopt1,   0,  1,128,52,0      ;04=Rahmen Image
-dw 00,     255*256+1, prgobjopt1a,  8, 13,112, 8,0      ;05=Beschreibung Pfad
-dw 00,     255*256+1, prgobjopt1b,  8, 23,112, 8,0      ;06=Beschreibung Auflösung
+dw prginf, 255*256+16,prgbutabo,    3,132, 43,12,0      ;01=Button "About"
+dw hlpopn, 255*256+16,prgbuthlp,   49,132, 43,12,0      ;02=Button "Help"
+dw diainpc,255*256+16,prgbutoky,   95,132, 54,12,0      ;03=Button "Close"
+dw 00,     255*256+3, prgobjopt1,   0,  1,152,52,0      ;04=Rahmen Image
+dw 00,     255*256+1, prgobjopt1a,  8, 13,136, 8,0      ;05=Beschreibung Pfad
+dw 00,     255*256+1, prgobjopt1b,  8, 23,136, 8,0      ;06=Beschreibung Auflösung
 prgdatopt1
-dw optbgr, 255*256+16,prgbutbck,   14, 34,100,12,0      ;07=Button "Use as Background"
-dw 00,     255*256+3, prgobjopt2,   0, 53,128,78,0      ;08=Rahmen Slideshow
+dw optbgr, 255*256+16,prgbutbck,   26, 34,100,12,0      ;07=Button "Use as Background"
+dw 00,     255*256+3, prgobjopt2,   0, 53,152,78,0      ;08=Rahmen Slideshow
 dw 00,     255*256+1, prgobjopt3a,  8, 65, 50, 8,0      ;09=Beschreibung Pfad
-dw 00,     255*256+32,prgobjopt3b, 55, 63, 65,12,0      ;10=Input Pfad
+dw 00,     255*256+32,prgobjopt3b, 55, 63, 89,12,0      ;10=Input Pfad
 dw 00,     255*256+1, prgobjopt4a,  8, 79, 65, 8,0      ;11=Beschreibung Verzögerung1
 dw 00,     255*256+32,prgobjopt4b, 77, 77, 20,12,0      ;12=Input Verzögerung
 dw 00,     255*256+1, prgobjopt4c, 99, 79, 23, 8,0      ;13=Beschreibung Verzögerung2
-dw 00,     255*256+17,prgobjopt6,   8, 91,112, 8,0      ;14=Check Fullscreen
-dw 00,     255*256+17,prgobjopt7,   8,101,112, 8,0      ;15=Check Random Order
-dw optsld, 255*256+16,prgbutsld,   14,112,100,12,0      ;16=Button "Start Slideshow"
+dw 00,     255*256+17,prgobjopt6,   8, 91,128, 8,0      ;14=Check Fullscreen
+dw 00,     255*256+17,prgobjopt7,   8,101,128, 8,0      ;15=Check Random Order
+dw optsld, 255*256+16,prgbutsld,   26,112,100,12,0      ;16=Button "Start Slideshow"
 
 prgobjopt1  dw prgobjtxt1,2+4
 prgobjopt1a dw gfxpth,2+4+128
-prgobjopt1b dw prgobjtxt1a,2+4+128
+prgobjopt1b dw prgobjtxt1b,2+4+128
 prgobjopt2  dw prgobjtxt2,2+4
 prgobjopt3a dw prgobjtxt3a,2+4
 prgobjopt3b dw sldinppth,0,2,0,2,255,0
@@ -2902,9 +2960,9 @@ sldflgrnd   db 0
 gfxmsk  db "*  ",0
 gfxpth  ds 256
 
-cfgcpctyp   db 0
+cfgcapflg   db 0
 
-prgtrnend
+App_EndTrns
 
 relocate_table
 relocate_end
